@@ -189,13 +189,11 @@ class PCL_point_cloud_to_pcd
 
         if ( index == 0 )
         {
-
             sprintf( tempchar, "%s/%s_%d.pcd", m_save_dir_name.c_str(), file_name.c_str(), m_save_files_index );
             m_save_files_index++;
         }
         else
         {
-
             sprintf( tempchar, "%s/%s_%d.pcd", m_save_dir_name.c_str(), file_name.c_str(), index );
             cout << "----- Save cloud to " << tempchar << " -----" << endl;
         }

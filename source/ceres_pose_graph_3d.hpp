@@ -282,7 +282,6 @@ bool OutputPoses(const std::string& filename, const MapOfPoses& poses) {
 void BuildOptimizationProblem( const VectorOfConstraints &constraints,
                                MapOfPoses *poses, ceres::Problem *problem )
 {
-
     if ( constraints.empty() )
     {
         std::cout << "No constraints, no problem to optimize." << std::endl;
@@ -292,13 +291,13 @@ void BuildOptimizationProblem( const VectorOfConstraints &constraints,
     ceres::LossFunction *         loss_function = NULL;
     ceres::LocalParameterization *quaternion_local_parameterization =
         new ceres::EigenQuaternionParameterization;
-
-    for ( VectorOfConstraints::const_iterator constraints_iter =
+    // Iterate over constraints:
+    for (VectorOfConstraints::const_iterator constraints_iter =
               constraints.begin();
           constraints_iter != constraints.end(); ++constraints_iter )
     {
         const Constraint3d &constraint = *constraints_iter;
-
+        // Poses that are affected until this constraint
         MapOfPoses::iterator pose_begin_iter = poses->find( constraint.id_begin );
         MapOfPoses::iterator pose_end_iter = poses->find( constraint.id_end );
 
@@ -313,7 +312,6 @@ void BuildOptimizationProblem( const VectorOfConstraints &constraints,
                                    pose_begin_iter->second.q.coeffs().data(),
                                    pose_end_iter->second.p.data(),
                                    pose_end_iter->second.q.coeffs().data() );
-
         problem->SetParameterization( pose_begin_iter->second.q.coeffs().data(),
                                       quaternion_local_parameterization );
         problem->SetParameterization( pose_end_iter->second.q.coeffs().data(),

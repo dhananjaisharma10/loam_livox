@@ -270,7 +270,9 @@ class Laser_mapping
     std::mutex m_mutex_keyframe;
 
     float                   m_pt_cell_resolution = 1.0;
+    // Maintains the point cloud in the form of cells.
     Points_cloud_map<float> m_pt_cell_map_full;
+    // TODO: Understand the role of these variables
     Points_cloud_map<float> m_pt_cell_map_corners;
     Points_cloud_map<float> m_pt_cell_map_planes;
 
@@ -301,6 +303,7 @@ class Laser_mapping
 
     // ANCHOR keyframe define
     //std::shared_ptr<Maps_keyframe<float>>            m_current_keyframe;
+    // TODO: Understand the role of these variables and classes
     std::list<std::shared_ptr<Maps_keyframe<float>>> m_keyframe_of_updating_list;
     std::list<std::shared_ptr<Maps_keyframe<float>>> m_keyframe_need_precession_list;
 
@@ -308,7 +311,6 @@ class Laser_mapping
 
     int if_pt_in_fov( const Eigen::Matrix<double, 3, 1> &pt )
     {
-
         auto pt_affine = m_q_w_curr.inverse() * ( pt - m_t_w_curr );
 
         if ( pt_affine( 0 ) < 0 )
@@ -592,33 +594,35 @@ class Laser_mapping
         init_parameters( m_ros_node_handle );
 
         //livox_corners
+        // Present in A-LOAM
         m_sub_laser_cloud_corner_last = m_ros_node_handle.subscribe<sensor_msgs::PointCloud2>( "/pc2_corners", 10000, &Laser_mapping::laserCloudCornerLastHandler, this );
         m_sub_laser_cloud_surf_last = m_ros_node_handle.subscribe<sensor_msgs::PointCloud2>( "/pc2_surface", 10000, &Laser_mapping::laserCloudSurfLastHandler, this );
         m_sub_laser_cloud_full_res = m_ros_node_handle.subscribe<sensor_msgs::PointCloud2>( "/pc2_full", 10000, &Laser_mapping::laserCloudFullResHandler, this );
-
+        // Present in A-LOAM
         m_pub_laser_cloud_surround = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/laser_cloud_surround", 10000 );
-
+        // Not present in A-LOAM
         m_pub_last_corner_pts = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/features_corners", 10000 );
         m_pub_last_surface_pts = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/features_surface", 10000 );
-
+        // Not present in A-LOAM
         m_pub_match_corner_pts = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/match_pc_corners", 10000 );
         m_pub_match_surface_pts = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/match_pc_surface", 10000 );
         m_pub_pc_aft_loop = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/pc_aft_loop_closure", 10000 );
         m_pub_debug_pts = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/pc_debug", 10000 );
-
+        // Present in A-LOAM
         m_pub_laser_cloud_map = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/laser_cloud_map", 10000 );
         m_pub_laser_cloud_full_res = m_ros_node_handle.advertise<sensor_msgs::PointCloud2>( "/velodyne_cloud_registered", 10000 );
         m_pub_odom_aft_mapped = m_ros_node_handle.advertise<nav_msgs::Odometry>( "/aft_mapped_to_init", 10000 );
         m_pub_odom_aft_mapped_hight_frec = m_ros_node_handle.advertise<nav_msgs::Odometry>( "/aft_mapped_to_init_high_frec", 10000 );
         m_pub_laser_aft_mapped_path = m_ros_node_handle.advertise<nav_msgs::Path>( "/aft_mapped_path", 10000 );
+        // Not present in A-LOAM
         m_pub_laser_aft_loopclosure_path = m_ros_node_handle.advertise<nav_msgs::Path>( "/aft_loopclosure_path", 10000 );
-        
+        // Points_cloud_map<float>
         m_pt_cell_map_full.set_resolution( m_pt_cell_resolution );
         m_pt_cell_map_full.m_minimum_revisit_threshold = m_para_threshold_cell_revisit;
-
+        // Points_cloud_map<float>
         m_pt_cell_map_corners.set_resolution( m_pt_cell_resolution );
         m_pt_cell_map_corners.m_minimum_revisit_threshold = m_para_threshold_cell_revisit;
-
+        // Points_cloud_map<float>
         m_pt_cell_map_planes.set_resolution( m_pt_cell_resolution );
         m_pt_cell_map_planes.m_minimum_revisit_threshold = m_para_threshold_cell_revisit;
 
@@ -869,7 +873,7 @@ class Laser_mapping
         m_pub_laser_aft_loopclosure_path.publish( m_laser_after_loopclosure_path );
     }
 
-    //ANCHOR loop_detection
+    // ANCHOR loop_detection
     void service_loop_detection()
     {
         int last_update_index = 0;
@@ -896,7 +900,7 @@ class Laser_mapping
         scene_align.init( m_loop_save_dir_name );
         scene_align.m_accepted_threshold = m_loop_closure_map_alignment_inlier_threshold;
         scene_align.m_maximum_icp_iteration = m_loop_closure_map_alignment_maximum_icp_iteration;
-        // scene_align. =  m_
+
         PCL_TOOLS::PCL_point_cloud_to_pcd pcd_saver;
         pcd_saver.set_save_dir_name( std::string( m_loop_save_dir_name ).append( "/pcd" ) );
         map_rfn.set_save_dir( std::string( m_loop_save_dir_name ).append( "/mapping_refined" ) );
@@ -912,25 +916,25 @@ class Laser_mapping
         down_sample_filter.setLeafSize( m_surround_pointcloud_resolution, m_surround_pointcloud_resolution, m_surround_pointcloud_resolution );
         while ( 1 )
         {
-
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
             //m_mutex_dump_full_history.lock();
 
             if ( m_keyframe_need_precession_list.size() == 0 )
-            {
                 continue;
-            }
             
-            m_timer.tic( "New keyframe" );
+            m_timer.tic("New keyframe");
             q_curr = m_keyframe_need_precession_list.front()->m_pose_q;
             t_curr = m_keyframe_need_precession_list.front()->m_pose_t;
             // q_curr = m_q_w_curr;
             // t_curr = m_t_w_curr;
             reg_error_his = m_his_reg_error;
-
-            m_keyframe_need_precession_list.front()->update_features_of_each_cells();
+            // Cells ke liye feature calculate kar diye and separately line aur
+            // plane features (individual and roi for both) bhi save karliye
+            // class vectors mein
+            m_keyframe_need_precession_list.front()->update_features_of_each_cells();  // redundant
             m_keyframe_need_precession_list.front()->analyze();
 
+            // New keyframe
             keyframe_vec.push_back( m_keyframe_need_precession_list.front() );
             m_mutex_keyframe.lock();
             m_keyframe_need_precession_list.pop_front();
@@ -938,34 +942,38 @@ class Laser_mapping
 
             curren_frame_idx = keyframe_vec.back()->m_ending_frame_idx;
 
-            if ( 1 )
+            // Voxel grid
+            if (1)
             {
+                // m_accumulated_point_cloud: Point cloud accummulated between current and last frames
                 down_sample_filter.setInputCloud( keyframe_vec.back()->m_accumulated_point_cloud.makeShared() );
                 down_sample_filter.filter( keyframe_vec.back()->m_accumulated_point_cloud );
             }
+            // Add the ID of the new PC
             map_id_pc.insert( std::make_pair( map_id_pc.size(), keyframe_vec.back()->m_accumulated_point_cloud ) );
 
-            pose3d_vec.push_back( Ceres_pose_graph_3d::Pose3d( q_curr, t_curr ) );
+            pose3d_vec.push_back(Ceres_pose_graph_3d::Pose3d(q_curr, t_curr));
             pose3d_map.insert( std::make_pair( pose3d_map.size(), Ceres_pose_graph_3d::Pose3d( q_curr, t_curr ) ) );
             
+            // Relative pose between the latest and the last keyframes.
             if ( pose3d_vec.size() >= 2 )
             {
                 Ceres_pose_graph_3d::Constraint3d temp_csn;
-                Eigen::Vector3d                   relative_T = pose3d_vec[ pose3d_vec.size() - 2 ].q.inverse() * ( t_curr - pose3d_vec[ pose3d_vec.size() - 2 ].p );
-                Eigen::Quaterniond                relative_Q = pose3d_vec[ pose3d_vec.size() - 2 ].q.inverse() * q_curr;
-                
+                Eigen::Vector3d relative_T = pose3d_vec[ pose3d_vec.size() - 2 ].q.inverse() * ( t_curr - pose3d_vec[ pose3d_vec.size() - 2 ].p );
+                Eigen::Quaterniond relative_Q = pose3d_vec[ pose3d_vec.size() - 2 ].q.inverse() * q_curr;
+                // temp_csn stores the relative transformation between the latest and the last keyframes
                 temp_csn = Ceres_pose_graph_3d::Constraint3d( pose3d_vec.size() - 2, pose3d_vec.size() - 1,
                                                               relative_Q, relative_T );
-                constrain_vec.push_back( temp_csn );
+                constrain_vec.push_back(temp_csn);
             }
             
             // Save pose
             json_file_name = std::string( m_loop_save_dir_name ).append( "/pose_" ).append( std::to_string( curren_frame_idx ) ).append( ".json" );
             dump_pose_and_regerror( json_file_name, q_curr, t_curr, reg_error_his );
             last_update_index = m_current_frame_index;
-            m_timer.tic( "Find loop" );
+            m_timer.tic("Find loop");
 
-            std::shared_ptr<Maps_keyframe<float>> last_keyframe = keyframe_vec.back();
+            std::shared_ptr<Maps_keyframe<float>> last_keyframe = keyframe_vec.back();  // this is the latest keyframe added
             float                                 ratio_non_zero_plane = last_keyframe->m_ratio_nonzero_plane;
             float                                 ratio_non_zero_line = last_keyframe->m_ratio_nonzero_line;
 
@@ -984,56 +992,53 @@ class Laser_mapping
 
             m_logger_loop_closure.printf( "--- Current_idx = %d, lidar_frame_idx = %d ---\r\n", keyframe_vec.size(), curren_frame_idx );
             m_logger_loop_closure.printf( "%s", last_keyframe->get_frame_info().c_str() );
-
-            for ( size_t his = 0; his < keyframe_vec.size() - 1; his++ )
+            for (size_t his = 0; his < keyframe_vec.size() - 1; his++)
             {
-                if ( if_end )
-                {
+                if (if_end)
                     break;
-                }
-                if ( keyframe_vec.size() - his < ( size_t ) m_loop_closure_minimum_keyframe_differen )
-                {
-                    continue;
-                }
-                float ratio_non_zero_plane_his = keyframe_vec[ his ]->m_ratio_nonzero_plane;
-                float ratio_non_zero_line_his = keyframe_vec[ his ]->m_ratio_nonzero_line;
 
-                if ( ( ratio_non_zero_plane_his < avail_ratio_plane ) && ( ratio_non_zero_line_his < avail_ratio_line ) )
+                // Keyframes to be considered should be at least m_loop_closure_minimum_keyframe_differen back in the past
+                if (keyframe_vec.size() - his < ( size_t ) m_loop_closure_minimum_keyframe_differen)
+                    continue;
+                // ratio_non_zero_plane is the ratio of non-zero pixels in plane image
+                // ratio_non_zero_line is the ratio of non-zero pixels in line image
+                float ratio_non_zero_plane_his = keyframe_vec[his]->m_ratio_nonzero_plane;
+                float ratio_non_zero_line_his = keyframe_vec[his]->m_ratio_nonzero_line;
+                if ((ratio_non_zero_plane_his < avail_ratio_plane) && (ratio_non_zero_line_his < avail_ratio_line))
                     continue;
 
-                if ( abs( keyframe_vec[ his ]->m_roi_range - last_keyframe->m_roi_range ) > 5.0 )
-                {
+                if (abs(keyframe_vec[his]->m_roi_range - last_keyframe->m_roi_range) > 5.0)
                     continue;
-                }
 
+                // Find similarity with the latest/last keyframe.
                 sim_plane_res = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_plane, keyframe_vec[ his ]->m_feature_img_plane );
                 sim_line_res = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_line, keyframe_vec[ his ]->m_feature_img_line );
-                
-                if ( ( ( sim_line_res > m_loop_closure_minimum_similarity_linear ) && ( sim_plane_res > 0.92 ) ) ||
-                     ( sim_plane_res > m_loop_closure_minimum_similarity_planar ) )
+                // If similarity crosses the threshold.
+                if (((sim_line_res > m_loop_closure_minimum_similarity_linear) && (sim_plane_res > 0.92))
+                    || (sim_plane_res > m_loop_closure_minimum_similarity_planar))
                 {
-                    if ( 0 ) // Enable check in roi
-                    {
-                        sim_plane_res_roi = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_plane_roi, keyframe_vec[ his ]->m_feature_img_plane_roi );
-                        sim_line_res_roi = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_line_roi, keyframe_vec[ his ]->m_feature_img_line_roi );
-                        if ( ( ( sim_plane_res_roi > m_loop_closure_minimum_similarity_linear ) && ( sim_plane_res > 0.92 ) ) ||
-                             ( sim_line_res_roi > m_loop_closure_minimum_similarity_planar ) )
-                        {
-                            m_logger_loop_closure.printf( "Range in roi check pass\r\n"); 
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-
-                    if( (last_keyframe->m_set_cell.size() - keyframe_vec[ his ]->m_set_cell.size() ) /  (last_keyframe->m_set_cell.size() + keyframe_vec[ his ]->m_set_cell.size())*0.1 )
-                    {
+                    // if ( 0 ) // Enable check in roi
+                    // {
+                    //     sim_plane_res_roi = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_plane_roi, keyframe_vec[ his ]->m_feature_img_plane_roi );
+                    //     sim_line_res_roi = last_keyframe->max_similiarity_of_two_image( last_keyframe->m_feature_img_line_roi, keyframe_vec[ his ]->m_feature_img_line_roi );
+                    //     if ( ( ( sim_plane_res_roi > m_loop_closure_minimum_similarity_linear ) && ( sim_plane_res > 0.92 ) ) ||
+                    //          ( sim_line_res_roi > m_loop_closure_minimum_similarity_planar ) )
+                    //     {
+                    //         m_logger_loop_closure.printf( "Range in roi check pass\r\n"); 
+                    //     }
+                    //     else
+                    //     {
+                    //         continue;
+                    //     }
+                    // }
+                    // TODO: Understand the meaning of the conditional below. m_set_cell?
+                    // Why you do this? Mofo
+                    if((last_keyframe->m_set_cell.size() - keyframe_vec[ his ]->m_set_cell.size()) / (last_keyframe->m_set_cell.size() + keyframe_vec[ his ]->m_set_cell.size()) * 0.1)
                         continue;
-                    }
-                    scene_align.set_downsample_resolution( m_loop_closure_map_alignment_resolution, m_loop_closure_map_alignment_resolution );
+                    // Find transform between two mappings.
+                    scene_align.set_downsample_resolution(m_loop_closure_map_alignment_resolution, m_loop_closure_map_alignment_resolution);
                     scene_align.m_para_scene_alignments_maximum_residual_block = m_para_scene_alignments_maximum_residual_block;
-                    double icp_score = scene_align.find_tranfrom_of_two_mappings( last_keyframe, keyframe_vec[ his ], m_loop_closure_map_alignment_if_dump_matching_result );
+                    double icp_score = scene_align.find_tranfrom_of_two_mappings(last_keyframe, keyframe_vec[his], m_loop_closure_map_alignment_if_dump_matching_result);
                     
                     screen_printf( "===============================================\r\n" );
                     screen_printf( "%s -- %s\r\n", m_filename_vec[ keyframe_vec.size() - 1 ].c_str(), m_filename_vec[ his ].c_str() );
@@ -1045,20 +1050,24 @@ class Laser_mapping
                     m_logger_loop_closure.printf( "ICP inlier threshold = %lf, %lf\r\n", icp_score, scene_align.m_pc_reg.m_inlier_threshold );
                     m_logger_loop_closure.printf( "%s\r\n", scene_align.m_pc_reg.m_final_opt_summary.BriefReport().c_str() );
                     
-                    if ( scene_align.m_pc_reg.m_inlier_threshold > m_loop_closure_map_alignment_inlier_threshold*2 )
+                    // If inlier threshold is high, then current frame and older frame are not similar enough.
+                    // From review of PCL library, inlier threshold seems the minimum distance between the inlier points.
+                    // Skip 10 frames.
+                    if (scene_align.m_pc_reg.m_inlier_threshold > m_loop_closure_map_alignment_inlier_threshold * 2)
                     {
                         his += 10;
                         continue;
                     }
 
-                    if ( scene_align.m_pc_reg.m_inlier_threshold < m_loop_closure_map_alignment_inlier_threshold )
+                    // Do loop closure if inlier distance is less.
+                    if (scene_align.m_pc_reg.m_inlier_threshold < m_loop_closure_map_alignment_inlier_threshold)
                     {
                         printf( "I believe this is true loop.\r\n" );
-                       m_logger_loop_closure.printf( "I believe this is true loop.\r\n" );
-                        auto Q_a = pose3d_vec[ his ].q;
-                        auto Q_b = pose3d_vec[ pose3d_vec.size() - 1 ].q;
-                        auto T_a = pose3d_vec[ his ].p;
-                        auto T_b = pose3d_vec[ pose3d_vec.size() - 1 ].p;
+                        m_logger_loop_closure.printf( "I believe this is true loop.\r\n" );
+                        auto Q_a = pose3d_vec[his].q;
+                        auto Q_b = pose3d_vec[pose3d_vec.size() - 1].q;
+                        auto T_a = pose3d_vec[his].p;
+                        auto T_b = pose3d_vec[pose3d_vec.size() - 1].p;
                         auto ICP_q = scene_align.m_pc_reg.m_q_w_curr;
                         auto ICP_t = scene_align.m_pc_reg.m_t_w_curr;
 
@@ -1067,28 +1076,30 @@ class Laser_mapping
 
                         screen_out << "ICP_q = " << ICP_q.coeffs().transpose() << std::endl;
                         screen_out << "ICP_t = " << ICP_t.transpose() << std::endl;
-                        for ( int i = 0; i < 10; i++ )
+                        for (int i = 0; i < 10; i++)
                         {
                             screen_out << "-------------------------------------" << std::endl;
                             screen_out << ICP_q.coeffs().transpose() << std::endl;
                             screen_out << ICP_t.transpose() << std::endl;
                         }
+
                         Ceres_pose_graph_3d::VectorOfConstraints constrain_vec_temp;
                         constrain_vec_temp = constrain_vec;
-                        constrain_vec_temp.push_back( Scene_alignment<float>::add_constrain_of_loop( pose3d_vec.size() - 1, his, Q_a, T_a, Q_b, T_b, ICP_q, ICP_t ) );
+                        constrain_vec_temp.push_back(Scene_alignment<float>::add_constrain_of_loop(pose3d_vec.size() - 1, his, Q_a, T_a, Q_b, T_b, ICP_q, ICP_t));
                         std::string path_name = m_loop_save_dir_name;
-                        std::string g2o_filename = std::string( path_name ).append( "/loop.g2o" );
+                        std::string g2o_filename = std::string(path_name).append("/loop.g2o");
                         pose3d_map_ori = pose3d_map;
                         auto temp_pose_3d_map = pose3d_map;
-                        Scene_alignment<float>::save_edge_and_vertex_to_g2o( g2o_filename.c_str(), temp_pose_3d_map, constrain_vec_temp );
-                        Ceres_pose_graph_3d::pose_graph_optimization( temp_pose_3d_map, constrain_vec_temp );
-                        Ceres_pose_graph_3d::OutputPoses( std::string( path_name ).append( "/poses_ori.txt" ), pose3d_map_ori );
-                        Ceres_pose_graph_3d::OutputPoses( std::string( path_name ).append( "/poses_opm.txt" ), temp_pose_3d_map );
+                        Scene_alignment<float>::save_edge_and_vertex_to_g2o(g2o_filename.c_str(), temp_pose_3d_map, constrain_vec_temp);
+                        Ceres_pose_graph_3d::pose_graph_optimization(temp_pose_3d_map, constrain_vec_temp);
+                        Ceres_pose_graph_3d::OutputPoses(std::string(path_name).append("/poses_ori.txt"), pose3d_map_ori);
+                        Ceres_pose_graph_3d::OutputPoses(std::string(path_name).append("/poses_opm.txt"), temp_pose_3d_map);
                         scene_align.dump_file_name( std::string( path_name ).append( "/file_name.txt" ), map_file_name );
-
+                        // temp_pose_3d_map has updated pose. Publish updated pose after loop closure.
                         loop_closure_pub_optimzed_path( temp_pose_3d_map );
 
-                        for ( int pc_idx = ( int ) map_id_pc.size() - 1; pc_idx >= 0; pc_idx -= 2 )
+                        // Update all past point clouds
+                        for (int pc_idx = (int) map_id_pc.size() - 1; pc_idx >= 0; pc_idx -= 2)
                         {
                             screen_out << "*** Refine pointcloud, curren idx = " << pc_idx << " ***" << endl;
                             auto refined_pt = map_rfn.refine_pointcloud( map_id_pc, pose3d_map_ori, temp_pose_3d_map, pc_idx, 0 );
@@ -1099,27 +1110,26 @@ class Laser_mapping
                             std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
                         }
                         //map_rfn.refine_mapping( path_name, 0 );
-                        if ( 0 )
-                        {
-                            map_rfn.refine_mapping( map_id_pc, pose3d_map_ori, temp_pose_3d_map, 1 );
-                            pcl::toROSMsg( map_rfn.m_pts_aft_refind, ros_laser_cloud_surround );
-                            ros_laser_cloud_surround.header.stamp = ros::Time::now();
-                            ros_laser_cloud_surround.header.frame_id = "/camera_init";
-                            m_pub_pc_aft_loop.publish( ros_laser_cloud_surround );
-                        }
+                        // if ( 0 )
+                        // {
+                        //     map_rfn.refine_mapping( map_id_pc, pose3d_map_ori, temp_pose_3d_map, 1 );
+                        //     pcl::toROSMsg( map_rfn.m_pts_aft_refind, ros_laser_cloud_surround );
+                        //     ros_laser_cloud_surround.header.stamp = ros::Time::now();
+                        //     ros_laser_cloud_surround.header.frame_id = "/camera_init";
+                        //     m_pub_pc_aft_loop.publish( ros_laser_cloud_surround );
+                        // }
+                        // If loop was found with the current keyframe, exit all the loops.
                         if_end = 1;
                         break;
                     }
                     else
-                    {
                         his += 5;
-                    }
-                    if ( if_end )
-                    {
+
+                    if (if_end)
                         break;
-                    }
                 }
-                if ( if_end )
+
+                if (if_end)
                 {
                     std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
                     break;
@@ -1130,11 +1140,10 @@ class Laser_mapping
 
             scene_align.dump_file_name( std::string( m_loop_save_dir_name ).append( "/file_name.txt" ), map_file_name );
             
-            if ( 1 )
+            if (1)
             {
-
                 m_timer.tic( "Pub surround pts" );
-                pcl::toROSMsg( pt_full, ros_laser_cloud_surround );
+                pcl::toROSMsg(pt_full, ros_laser_cloud_surround);
                 ros_laser_cloud_surround.header.stamp = ros::Time::now();
                 ros_laser_cloud_surround.header.frame_id = "/camera_init";
                 m_pub_debug_pts.publish( ros_laser_cloud_surround );
@@ -1337,9 +1346,8 @@ class Laser_mapping
 
         double point_cloud_current_timestamp = min_t;
         if ( point_cloud_current_timestamp > m_lastest_pc_income_time )
-        {
             m_lastest_pc_income_time = point_cloud_current_timestamp;
-        }
+
         point_cloud_current_timestamp = m_lastest_pc_income_time;
         m_time_odom = m_last_time_stamp;
         m_minimum_pt_time_stamp = m_last_time_stamp;
@@ -1524,37 +1532,43 @@ class Laser_mapping
         if ( m_loop_closure_if_enable )
         {
             std::set<Points_cloud_map<float>::Mapping_cell_ptr> cell_vec;
-            m_pt_cell_map_full.append_cloud( PCL_TOOLS::pcl_pts_to_eigen_pts<float, PointType>( current_laser_cloud_full.makeShared() ), &cell_vec );
+            /** Append the current full resolution laser cloud to
+             * m_pt_cell_map_full. cell_vec will contain cell centers containing
+             * the points of the point cloud current_laser_cloud_full.
+             */
+            m_pt_cell_map_full.append_cloud( PCL_TOOLS::pcl_pts_to_eigen_pts<float, PointType>( current_laser_cloud_full.makeShared() ), &cell_vec);
             std::unique_lock<std::mutex> lock( m_mutex_keyframe );
+            
+            // TODO: Not sure what is happening.
             for(auto it = m_keyframe_of_updating_list.begin(); it != m_keyframe_of_updating_list.end(); it++ )
-            {
-              (*it)->add_cells(cell_vec);
-            }
+                (*it)->add_cells(cell_vec);
 
-            if ( m_keyframe_of_updating_list.front()->m_accumulate_frames >= ( size_t ) m_para_scans_of_each_keyframe )
+            // Step 1:
+            // m_para_scans_of_each_keyframe: Defines the number of frames in 
+            // a window.
+            if (m_keyframe_of_updating_list.front()->m_accumulate_frames >= ( size_t ) m_para_scans_of_each_keyframe)
             {
                 m_keyframe_of_updating_list.front()->m_ending_frame_idx = m_current_frame_index;
-                
+                // Get pose
                 m_keyframe_of_updating_list.front()->m_pose_q = m_q_w_curr;
                 m_keyframe_of_updating_list.front()->m_pose_t =  m_t_w_curr;
-                
+                // Add to the precession list.
                 m_keyframe_need_precession_list.push_back( m_keyframe_of_updating_list.front() );
+                // Remove from the updating list.
                 m_keyframe_of_updating_list.pop_front();
             }
 
-            if ( m_keyframe_of_updating_list.back()->m_accumulate_frames >= ( size_t ) m_para_scans_between_two_keyframe )
+            // Step 2: m_para_scans_between_two_keyframe:
+            if ( m_keyframe_of_updating_list.back()->m_accumulate_frames >= ( size_t ) m_para_scans_between_two_keyframe)
             {
                 m_mutex_dump_full_history.lock();
-                
-                
-                for ( auto it = m_laser_cloud_full_history.begin(); it != m_laser_cloud_full_history.end(); it++ )
-                {
+                // Isme saare points hain - ANjandes
+                for (auto it = m_laser_cloud_full_history.begin(); it != m_laser_cloud_full_history.end(); it++)
                     m_keyframe_of_updating_list.back()->m_accumulated_point_cloud += ( *it );
-                }
-                if(m_keyframe_need_precession_list.size() > m_loop_closure_maximum_keyframe_in_wating_list)
-                {
-                    m_keyframe_need_precession_list.pop_front();
-                }
+
+                if (m_keyframe_need_precession_list.size() > m_loop_closure_maximum_keyframe_in_wating_list)
+                    m_keyframe_need_precession_list.pop_front();  // discard the oldest info
+
                 m_laser_cloud_full_history.clear();
                 m_mutex_dump_full_history.unlock();
                 m_keyframe_of_updating_list.push_back( std::make_shared<Maps_keyframe<float>>() );
@@ -1663,21 +1677,21 @@ class Laser_mapping
     {
         double first_time_stamp = -1;
         m_last_max_blur = 0.0;
-        if ( 0 )
-        {
-            if ( 0 )
-            {
-                m_mapping_refresh_service_corner =
-                    new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching_corner, this ) );
-                m_mapping_refresh_service_surface =
-                    new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching_surface, this ) );
-            }
-            else
-            {
-                m_mapping_refresh_service =
-                    new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching, this ) );
-            }
-        }
+        // if ( 0 )
+        // {
+        //     if ( 0 )
+        //     {
+        //         m_mapping_refresh_service_corner =
+        //             new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching_corner, this ) );
+        //         m_mapping_refresh_service_surface =
+        //             new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching_surface, this ) );
+        //     }
+        //     else
+        //     {
+        //         m_mapping_refresh_service =
+        //             new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_update_buff_for_matching, this ) );
+        //     }
+        // }
 
         m_service_pub_surround_pts = new std::future<void>( std::async( std::launch::async, &Laser_mapping::service_pub_surround_pts, this ) );
         if ( m_loop_closure_if_enable )

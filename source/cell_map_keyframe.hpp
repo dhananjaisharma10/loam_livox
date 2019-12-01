@@ -79,7 +79,7 @@ class Points_cloud_cell
     Eigen::Matrix< COMP_TYPE, 3, 1 >                m_feature_vector;
 
   public:
-    std::vector< PT_TYPE >    m_points_vec;
+    std::vector< PT_TYPE >        m_points_vec;
     pcl::PointCloud< pcl_pt >     m_pcl_pc_vec;
     DATA_TYPE                     m_cov_det_sqrt;
     bool                          m_mean_need_update = true;
@@ -375,6 +375,8 @@ class Points_cloud_cell
         //append_pt( cell_center );
     }
 
+
+
     FUNC_T void append_pt( const PT_TYPE &pt )
     {
         std::unique_lock< std::mutex > lock( *m_mutex_cell );
@@ -441,6 +443,7 @@ class Points_cloud_cell
             set_data_need_update( 1 );
         }
 
+        // Spherical features
         m_feature_type = e_feature_sphere;
         if ( m_points_vec.size() < 5 )
         {
@@ -457,13 +460,14 @@ class Points_cloud_cell
             m_feature_vector << 0, 0, 0;
             return e_feature_sphere;
         }
-
+        // Plane features
         if ( ( m_eigen_val[ 1 ] * m_feature_determine_threshold_plane > m_eigen_val[ 0 ] ) )
         {
             m_feature_type = e_feature_plane;
             m_feature_vector = m_eigen_vec.block< 3, 1 >( 0, 0 );
             return m_feature_type;
         }
+        // Line features
         if ( m_eigen_val[ 2 ] * m_feature_determine_threshold_line > m_eigen_val[ 1 ] )
         {
             m_feature_type = e_feature_line;
@@ -582,9 +586,17 @@ class Points_cloud_map
         m_octree.deleteTree();
     }
 
+
+    /** set_point_cloud: (Yet to write the description)
+     *  Args:
+     *  - input_pt_vec (std::vector<Eigen::Matrix>): Incoming point cloud.
+     *  - cell_vec (std::set<Mapping_cell_ptr>): This set will contain all the cells that
+     *  contain points in the above pointcloud.
+     */
     FUNC_T void set_point_cloud( const std::vector< PT_TYPE > &input_pt_vec, std::set< std::shared_ptr<Mapping_cell> > *cell_vec = nullptr )
     {
         clear_data();
+        // Update some variables. Probably some kind of boundary adjustment of the whole PC.
         for ( size_t i = 0; i < input_pt_vec.size(); i++ )
         {
             m_x_min = std::min( input_pt_vec[ i ]( 0 ), m_x_min );
@@ -595,35 +607,45 @@ class Points_cloud_map
             m_y_max = std::max( input_pt_vec[ i ]( 1 ), m_y_max );
             m_z_max = std::max( input_pt_vec[ i ]( 2 ), m_z_max );
         }
-        if ( cell_vec != nullptr )
+        if (cell_vec != nullptr)
         {
             cell_vec->clear();
         }
-        for ( size_t i = 0; i < input_pt_vec.size(); i++ )
+        for (size_t i = 0; i < input_pt_vec.size(); i++)
         {
-            std::shared_ptr<Mapping_cell> cell = find_cell( input_pt_vec[ i ], 1, 1 );
-            cell->append_pt( input_pt_vec[ i ] );
-            if ( cell_vec != nullptr )
+            std::shared_ptr<Mapping_cell> cell = find_cell(input_pt_vec[i], 1, 1);  // cell containing that point
+            cell->append_pt(input_pt_vec[i]);  // append this point to this cell
+            if (cell_vec != nullptr)
             {
-                cell_vec->insert( cell );
+                cell_vec->insert(cell);
             }
         }
 
-        m_octree.setInputCloud( m_pcl_cells_center );
+        m_octree.setInputCloud(m_pcl_cells_center);
         m_octree.addPointsFromInputCloud();
         screen_out << "*** set_point_cloud octree initialization finish ***" << std::endl;
         m_initialized = true;
         m_current_frame_idx++;
     }
 
+    /** append_cloud: If there are no cell centers present then cell_vec will contain
+     *  all the cell centers containing the input point cloud. Otherwise, 
+     *  cell_vec will only contain those cell centers that have at least 3/4 points.
+     * 
+     *  Args:
+     *  - input_pt_vec (std::vector<Eigen::Matrix>): Incoming point cloud.
+     *  - cell_vec (std::set<Mapping_cell_ptr>): This set will contain all the cells that
+     *  contain points in the input point cloud.
+     */
     FUNC_T void append_cloud( const std::vector< PT_TYPE > &input_pt_vec, std::set< Mapping_cell_ptr > *cell_vec = nullptr )
     {
         // ENABLE_SCREEN_PRINTF;
-        std::map< Mapping_cell_ptr, int > appeared_cell_count;
+        std::map< Mapping_cell_ptr, int > appeared_cell_count;  // keeps a count of the number of points in accertain cell center
         m_timer.tic( __FUNCTION__ );
         m_mapping_mutex->lock();
+        // Get the size of the hashmap m_map_pt_cell
         int current_size = get_cells_size();
-        if ( current_size == 0 )
+        if (current_size == 0)
         {
             set_point_cloud( input_pt_vec, cell_vec );
             m_mapping_mutex->unlock();
@@ -637,23 +659,23 @@ class Points_cloud_map
             }
             for ( size_t i = 0; i < input_pt_vec.size(); i++ )
             {
-                Mapping_cell_ptr cell = find_cell( input_pt_vec[ i ], 1, 1 );
-                cell->append_pt( input_pt_vec[ i ] );
+                Mapping_cell_ptr cell = find_cell(input_pt_vec[ i ], 1, 1);
+                cell->append_pt(input_pt_vec[i]);  // append this point to this cell
                 if ( cell_vec != nullptr )
                 {
                     auto it = appeared_cell_count.find(cell);
-                    if(it!= appeared_cell_count.end())
+                    if (it != appeared_cell_count.end())
                     {
-                        it->second ++;
+                        it->second++;
                     }
                     else
                     {
-                        appeared_cell_count.insert( std::make_pair(cell, 1) );
+                        appeared_cell_count.insert(std::make_pair(cell, 1));
                     }
                 }
             }
 
-            if ( cell_vec != nullptr )
+            if (cell_vec != nullptr)
             {
                 for ( auto it = appeared_cell_count.begin(); it != appeared_cell_count.end(); it++ )
                 {
@@ -713,10 +735,22 @@ class Points_cloud_map
         return cell;
     }
 
+
+    /** Function find_cell: Finds the cell center of the given point
+     *  
+     *  Args:
+     *  - pt (Eigen::Matrix): xyz coordinates of a point.
+     *  - if_add: Determines the action to be taken if a new cell center is discovered.
+     *  - if_treat_revisit: Determines the action to be taken if a cell center is revisited.
+     * 
+     *  Returns:
+     *  Mapping_cell_ptr: pointer to the cell.
+     */
     FUNC_T Mapping_cell_ptr find_cell( const PT_TYPE &pt, int if_add = 1, int if_treat_revisit = 0 )
     {
-        PT_TYPE        cell_center = find_cell_center( pt );
+        PT_TYPE        cell_center = find_cell_center( pt );  // get the xyz coordinates
         Map_pt_cell_it it = m_map_pt_cell.find( cell_center );
+        // If it's a new cell center
         if ( it == m_map_pt_cell.end() )
         {
             if ( if_add )
@@ -729,26 +763,29 @@ class Points_cloud_map
                 return nullptr;
             }
         }
+        // If cell center present in m_map_pt_cell
         else
         {
             if ( if_treat_revisit )
             {
+                // Update the last updated frame index of the cell if it was updated within 
+                // the last m_minimum_revisit_threshold frames.
                 if ( m_current_frame_idx - it->second->m_last_update_frame_idx < m_minimum_revisit_threshold )
                 {
                     it->second->m_last_update_frame_idx = m_current_frame_idx;
                     return it->second;
                 }
+                // TODO: UNderstand what's happening underneath
                 else
                 {
                     // Avoid confilcts of revisited
                     // ENABLE_SCREEN_PRINTF;
                     // screen_out << "!!!!! Cell revisit, curr_idx = " << m_current_frame_idx << " ,last_idx = " << it->second->m_last_update_frame_idx << std::endl;
-
                     Mapping_cell_ptr new_cell = std::make_shared<Mapping_cell>( it->second->get_center(), ( DATA_TYPE ) m_resolution );
                     m_cell_vec.push_back( new_cell );
                     new_cell->m_previous_visited_cell = it->second;
                     it->second = new_cell;
-                    it->second->m_create_frame_idx = m_current_frame_idx;
+                    it->second->m_create_frame_idx      = m_current_frame_idx;
                     it->second->m_last_update_frame_idx = m_current_frame_idx;
                     //screen_out << ", find cell addr = " << ( void * ) find_cell( pt ) << std::endl;
                 }
@@ -1303,10 +1340,12 @@ class Maps_keyframe
 
     FUNC_T float get_ratio_range_of_cell( PT_TYPE &cell_center = PT_TYPE( 0, 0, 0 ), float ratio = 0.8, std::vector< PT_TYPE > *err_vec = nullptr )
     {
+        // centroid of centroid of all cells
         cell_center = get_center();
         std::set< float > dis_vec;
         for ( auto it  = m_set_cell.begin(); it!= m_set_cell.end(); it++ )
         {
+            // distance between centroid of current cell and centroid of centroid of all cells
             PT_TYPE dis = (*(it))->get_center() - cell_center;
             if ( err_vec != nullptr )
             {
@@ -1315,6 +1354,7 @@ class Maps_keyframe
             dis_vec.insert( ( float ) dis.norm() );
         }
         // https://stackoverflow.com/questions/1033089/can-i-increment-an-iterator-by-just-adding-a-number
+        // find the ninth (depending on ratio) farthest distance
         return *std::next( dis_vec.begin(), std::ceil( (dis_vec.size()-1) * ratio ) );
     }
 
@@ -1442,7 +1482,7 @@ class Maps_keyframe
         m_feature_vecs_plane_roi.clear();
         m_feature_vecs_line_roi.clear();
         
-        Map_pt_cell_it                                  it;
+        Map_pt_cell_it it;
         m_feature_vecs_plane.reserve( cell_vec.size() );
         m_feature_vecs_line.reserve( cell_vec.size() );
         m_feature_vecs_plane_roi.reserve( cell_vec.size() );
